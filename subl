@@ -1,0 +1,197 @@
+#!/bin/bash
+# subl - Launch Sublime Text from Cygwin
+# usage: subl [options] -- [files]
+
+# To the extent possible under law, the author(s) have dedicated all copyright
+# and related and neighboring rights to this software to the public domain
+# worldwide. This software is distributed without any warranty. See
+# <http://creativecommons.org/publicdomain/zero/1.0/> for a copy of the CC0
+# Public Domain Dedication, which applies to this software.
+
+verbatim=no
+touch=no
+cygstart=no
+fileonly=no
+subl_args=()
+subl_args_win=
+
+current_path=
+current_pos=
+
+# split_path <path> - Split 'path' into current_path and current_pos
+split_path() {
+	local path="$1"
+	local pos=
+	local drivespec=
+
+	# Remove the drive spec (C:\) if the path starts with one
+	if [[ $path =~ ^[a-zA-Z]: ]]; then
+		drivespec="${path:0:2}"
+		path="${path:2}"
+	fi
+
+	# Check for :line:column and :line syntax
+	if [[ $path =~ :[^\\/:]+:[^\\/:]+$ ]]; then
+		local split="${path%:*:*}"
+		pos="${path:${#split}}"
+		path="$split"
+	elif [[ $path =~ :[^\\/:]+$ ]]; then
+		local split="${path%:*}"
+		pos="${path:${#split}}"
+		path="$split"
+	fi
+
+	current_path="$drivespec$path"
+	current_pos="$pos"
+}
+
+# add_path <path> <pos> - Add a path and file position to subl_args
+add_path() {
+	local path="$1"
+	local pos="$2"
+	local winpath=$(cygpath 2>/dev/null -aw -- "$path")
+
+	# Touch files before creating them to ensure they have properly set Cygwin
+	# permissions
+	if [[ $touch == yes ]] && [[ -n $winpath ]] && [[ ! -e $path ]]; then
+		touch 2>/dev/null -- "$path"
+		winpath=$(cygpath 2>/dev/null -aw -- "$path")
+	fi
+
+	if [[ -n $winpath ]]; then
+		subl_args+=("$winpath$pos")
+	else
+		subl_args+=("$path$pos")
+	fi
+}
+
+# rep_str <str> <count> <out> - Repeat 'str' 'count' times
+rep_str() {
+	local rep_str_str="$1"
+	local rep_str_count="$2"
+	local rep_str_out="$3"
+
+	if [[ $rep_str_count -lt 1 ]]; then
+		eval $rep_str_out=
+		return
+	fi
+
+	local rep_str_tmp=
+	printf -v rep_str_tmp "%${rep_str_count}s"
+	rep_str_tmp=${rep_str_tmp// /$rep_str_str}
+	eval $rep_str_out=\$rep_str_tmp
+}
+
+# write_args_win - Convert subl_args to a Windows format command line
+write_args_win() {
+	subl_args_win=
+	local arg
+
+	for arg in "${subl_args[@]}"; do
+		local last_non_slash=-1
+		local i
+
+		for (( i=0; i<${#arg}; i++ )); do
+			local chr=${arg:$i:1}
+
+			# When a quote is encountered, double all preceding slashes and
+			# escape the quote
+			if [[ $chr == '"' ]]; then
+				local num_slashes=$(( $i - 1 - $last_non_slash ))
+				local slashes=
+				rep_str '\' $num_slashes slashes
+
+				arg="${arg:0:$i}${slashes}\\${arg:$i}"
+				i=$(( $i + $num_slashes + 1 ))
+			fi
+
+			if [[ $chr != '\' ]]; then
+				last_non_slash=$i
+			fi
+		done
+
+		# Double all trailing slashes
+		local num_slashes=$(( $i - 1 - $last_non_slash ))
+		local slashes=
+		rep_str '\' $num_slashes slashes
+
+		# Add the escaped argument to the list
+		subl_args_win="$subl_args_win \"$arg$slashes\""
+	done
+}
+
+for arg; do
+	if [[ $fileonly == yes ]]; then
+		# Interpret all arguments as files (whether they exist or not) and
+		# don't parse :line:column syntax. Using absolute Windows filenames
+		# makes this unambiguous, since they can't start with dashes or contain
+		# colons in the file name.
+		add_path "$arg"
+	elif [[ $verbatim == yes ]]; then
+		# The last option was --command, so don't parse the argument
+		subl_args+=("$arg")
+		verbatim=no
+	else
+		case $arg in
+			--cygstart)
+				# Launch Sublime Text with `cygstart`
+				cygstart=yes
+				;;
+			--no-cygstart)
+				cygstart=no
+				;;
+			--touch)
+				# Touch files in Cygwin before creating them
+				touch=yes
+				;;
+			--no-touch)
+				touch=no
+				;;
+			--command)
+				# Interpret the following argument as a command
+				subl_args+=("$arg")
+				verbatim=yes
+				;;
+			--)
+				# Interpret all following arguments as files
+				fileonly=yes
+				;;
+			-*)
+				# Pass other options verbatim
+				subl_args+=("$arg")
+				;;
+			*)
+				# Split :line:column suffix from end of path
+				split_path "$arg"
+
+				# If the Cygwin path exists, convert it to a Windows path
+				if [[ -d $(dirname "$current_path") ]]; then
+					add_path "$current_path" "$current_pos"
+				else
+					subl_args+=("$arg")
+				fi
+				;;
+		esac
+	fi
+done
+
+# Get the location of the sublime_text binary from the registry
+key='/proc/registry/HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Windows/CurrentVersion/Uninstall'
+
+if [[ -e "$key/Sublime Text 3_is1/InstallLocation" ]]; then
+	IFS= read <"$key/Sublime Text 3_is1/InstallLocation" -r install_location
+elif [[ -e "$key/Sublime Text 2_is1/InstallLocation" ]]; then
+	IFS= read <"$key/Sublime Text 2_is1/InstallLocation" -r install_location
+else
+	printf 2>&1 '%s: Could not find sublime_text binary\n' "$0"
+	exit 127
+fi
+
+subl_bin=$(cygpath -u -- "$install_location\\sublime_text.exe")
+
+if [[ $cygstart == yes ]]; then
+	write_args_win
+	exec cygstart -- "$subl_bin" "$subl_args_win"
+else
+	exec "$subl_bin" "${subl_args[@]}"
+fi
