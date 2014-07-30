@@ -176,7 +176,9 @@ for arg; do
 done
 
 # Get the location of the sublime_text binary from the registry
-key='/proc/registry/HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Windows/CurrentVersion/Uninstall'
+reg='/proc/registry'
+[[ -d '/proc/registry64' ]] && reg='/proc/registry64'
+key="$reg/HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Windows/CurrentVersion/Uninstall"
 
 if [[ -e "$key/Sublime Text 3_is1/InstallLocation" ]]; then
 	IFS= read <"$key/Sublime Text 3_is1/InstallLocation" -r install_location
