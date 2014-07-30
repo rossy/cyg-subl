@@ -12,6 +12,7 @@ verbatim=no
 touch=no
 cygstart=no
 fileonly=no
+launch=no
 subl_args=()
 subl_args_win=
 
@@ -120,6 +121,18 @@ write_args_win() {
 	done
 }
 
+# is_sublime_running - Check the existence of Sublime's mutex
+is_sublime_running() {
+	exists() {
+		[[ -e "$1" ]] && return 0 || return 1
+	}
+
+	# Yes this is crazy
+	exists /proc/sys/BaseNamedObjects/Session/*/*-Sublime\ Text || \
+		exists /proc/sys/BaseNamedObjects/*-Sublime\ Text
+	return $?
+}
+
 for arg; do
 	if [[ $fileonly == yes ]]; then
 		# Interpret all arguments as files (whether they exist or not) and
@@ -146,6 +159,14 @@ for arg; do
 				;;
 			--no-touch)
 				touch=no
+				;;
+			--launch)
+				# Ensure a copy of Sublime Text is running before executing the
+				# command. This is good for use with --wait.
+				launch=yes
+				;;
+			--no-launch)
+				launch=no
 				;;
 			--command)
 				# Interpret the following argument as a command
@@ -190,6 +211,16 @@ else
 fi
 
 subl_bin=$(cygpath -u -- "$install_location\\sublime_text.exe")
+
+if [[ $launch == yes ]] && ! is_sublime_running; then
+	cygstart -- "$subl_bin"
+
+	# Wait two seconds or till the Sublime Text mutex appears
+	for (( i=0; i<20; i++ )); do
+		is_sublime_running && break
+		sleep 0.1
+	done
+fi
 
 if [[ $cygstart == yes ]]; then
 	write_args_win

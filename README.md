@@ -31,7 +31,7 @@ Usage
 
   To use Sublime Text to edit a git commit message:
 
-    $ export VISUAL='subl --new-window --wait'
+    $ export VISUAL='subl --launch --wait'
     $ git commit
 
   To set up an alias for quickly opening files:
