@@ -216,10 +216,12 @@ if [[ $launch == yes ]] && ! is_sublime_running; then
 	cygstart -- "$subl_bin"
 
 	# Wait two seconds or till the Sublime Text mutex appears
-	for (( i=0; i<20; i++ )); do
+	for (( i=0; i<19; i++ )); do
 		is_sublime_running && break
 		sleep 0.1
 	done
+
+	sleep 0.1
 fi
 
 if [[ $cygstart == yes ]]; then
