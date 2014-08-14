@@ -35,7 +35,7 @@ win_start() {
 	if has_cmd cygstart; then
 		cygstart -- "$(cygpath -u -- "$exe")" "$cmd_line"
 	else
-		"$WINDIR/system32/cmd.exe" /C "start \"\" \"$exe\" $cmd_line"
+		"$COMSPEC" /C "start \"\" \"$exe\" $cmd_line"
 	fi
 }
 
