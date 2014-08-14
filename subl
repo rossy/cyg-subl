@@ -19,6 +19,26 @@ subl_args_win=
 current_path=
 current_pos=
 
+# has_cmd <command> - Checks for command on system
+has_cmd() {
+	local command="$1"
+
+	command &>/dev/null -v -- "$command"
+	return $?
+}
+
+# win_start <exe> <cmd_line> - Start a native Windows application
+win_start() {
+	local exe="$1"
+	local cmd_line="$2"
+
+	if has_cmd cygstart; then
+		cygstart -- "$(cygpath -u -- "$exe")" "$cmd_line"
+	else
+		"$WINDIR/system32/cmd.exe" /C "start \"\" \"$exe\" $cmd_line"
+	fi
+}
+
 # split_path <path> - Split 'path' into current_path and current_pos
 split_path() {
 	local path="$1"
@@ -210,10 +230,10 @@ else
 	exit 127
 fi
 
-subl_bin=$(cygpath -u -- "$install_location\\sublime_text.exe")
+subl_bin_win="${install_location}sublime_text.exe"
 
 if [[ $launch == yes ]] && ! is_sublime_running; then
-	cygstart -- "$subl_bin"
+	win_start "$subl_bin_win"
 
 	# Wait two seconds or till the Sublime Text mutex appears
 	for (( i=0; i<19; i++ )); do
@@ -226,7 +246,7 @@ fi
 
 if [[ $cygstart == yes ]]; then
 	write_args_win
-	exec cygstart -- "$subl_bin" "$subl_args_win"
+	win_start "$subl_bin_win" "$subl_args_win"
 else
-	exec "$subl_bin" "${subl_args[@]}"
+	exec "$(cygpath -u -- "$subl_bin_win")" "${subl_args[@]}"
 fi
